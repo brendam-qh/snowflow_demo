@@ -173,6 +173,109 @@
 
     #hint.show { opacity: 1; }
 
+    /* ------------------------------------------------------- attribution */
+
+    #credit {
+        position: fixed;
+        left: 50%;
+        bottom: 12px;
+        z-index: 50;
+        transform: translateX(-50%);
+        font-size: 10px;
+        letter-spacing: 0.18em;
+        color: rgba(219, 230, 242, 0.45);
+        text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8);
+        white-space: nowrap;
+    }
+
+    #credit a {
+        color: rgba(219, 230, 242, 0.62);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        text-decoration-color: rgba(143, 196, 232, 0.35);
+        transition: color 160ms ease;
+    }
+
+    #credit a:hover { color: var(--accent); }
+
+    /* -------------------------------------------------- substack corner card */
+
+    #subcard {
+        position: fixed;
+        left: 14px;
+        top: 14px;
+        z-index: 60;
+        width: 232px;
+        padding: 14px 16px 15px;
+        border-radius: 4px;
+        border: 1px solid rgba(143, 196, 232, 0.18);
+        background: rgba(8, 12, 19, 0.78);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        opacity: 0;
+        transform: translate3d(0, -8px, 0);
+        transition: opacity 700ms ease, transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+        pointer-events: none;
+    }
+
+    #subcard.show {
+        opacity: 1;
+        transform: none;
+        pointer-events: auto;
+    }
+
+    #subcard h3 {
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: var(--frost);
+    }
+
+    #subcard p {
+        margin-top: 7px;
+        font-size: 11px;
+        line-height: 1.55;
+        letter-spacing: 0.04em;
+        color: var(--frost-dim);
+    }
+
+    #subcard .sub-cta {
+        display: inline-block;
+        margin-top: 11px;
+        padding: 7px 12px;
+        border-radius: 3px;
+        border: 1px solid rgba(143, 196, 232, 0.3);
+        font-size: 10px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        text-decoration: none;
+        color: var(--accent);
+        transition: background 160ms ease, color 160ms ease;
+    }
+
+    #subcard .sub-cta:hover {
+        background: rgba(143, 196, 232, 0.14);
+        color: #eaf4ff;
+    }
+
+    #subcard .sub-close {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        width: 22px;
+        height: 22px;
+        border: 0;
+        background: none;
+        color: var(--frost-dim);
+        font-size: 13px;
+        line-height: 22px;
+        cursor: pointer;
+        transition: color 160ms ease;
+    }
+
+    #subcard .sub-close:hover { color: var(--frost); }
+
     /* ------------------------------------------- webcam tracking preview */
     #trackpip {
         position: fixed;
@@ -196,6 +299,37 @@
     <canvas id="trackpip" width="240" height="200"></canvas>
 
     <div id="hint">click to look &nbsp;·&nbsp; wasd to move &nbsp;·&nbsp; f1 for settings</div>
+
+    <div id="credit">
+        built on <a href="https://github.com/Noniv/snowflow_demo" target="_blank" rel="noopener">SNOWFLOW</a>
+        by Maksymilian Dendura
+        &nbsp;·&nbsp; <a href="https://github.com/Noniv/snowflow_demo/blob/main/LICENSE" target="_blank" rel="noopener">MIT</a>
+        &nbsp;·&nbsp; <a href="https://github.com/brendam-qh/snowflow_demo" target="_blank" rel="noopener">source</a>
+    </div>
+
+    <div id="subcard">
+        <button class="sub-close" id="subcard-close" aria-label="dismiss">&#215;</button>
+        <h3>Follow the build</h3>
+        <p>Notes on how this demo was made &mdash; and what's next.</p>
+        <a class="sub-cta" href="https://SUBSTACK_URL_PLACEHOLDER" target="_blank" rel="noopener">read on substack &rarr;</a>
+    </div>
+
+    <script>
+        (function () {
+            var KEY = "snowflow.subcard.dismissed";
+            var card = document.getElementById("subcard");
+            var dismissed = false;
+            try { dismissed = localStorage.getItem(KEY) === "1"; } catch (e) {}
+            if (!dismissed) {
+                // Appear after the boot screen has had time to fade.
+                setTimeout(function () { card.classList.add("show"); }, 2200);
+            }
+            document.getElementById("subcard-close").addEventListener("click", function () {
+                card.classList.remove("show");
+                try { localStorage.setItem(KEY, "1"); } catch (e) {}
+            });
+        })();
+    </script>
 
     <div id="boot">
         <div class="boot-inner">

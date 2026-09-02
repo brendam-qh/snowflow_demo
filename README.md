@@ -5,7 +5,7 @@ valley. WebGPU, Babylon.js, hand-written WGSL. Everything you see is generated
 on the GPU at load time — there are no textures, no meshes, no HDRIs and no
 animation data in this repository.
 
-**▶ [riverwalk.qualityhealth.app](https://riverwalk.qualityhealth.app/)**
+**▶ [https://snowflow-web.vercel.app/](https://snowflow-web.vercel.app//)**
 
 > Requires a WebGPU-capable desktop browser (Chrome/Edge 113+, Firefox 141+,
 > Safari 26+) and a discrete or recent integrated GPU. There is no WebGL
