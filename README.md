@@ -1,4 +1,4 @@
-# SNOWFLOW
+# SNOWFLOW (Webcam version)
 
 A real-time tech demo: a compute-driven river cut through a procedural snow
 valley. WebGPU, Babylon.js, hand-written WGSL. Everything you see is generated
