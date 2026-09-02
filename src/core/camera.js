@@ -49,18 +49,24 @@ export class CameraRig {
         this.scene = scene;
 
         this.yaw = 2.4;
-        this.pitch = 0.17;
+        // Low pitch: the rig sits nearly level with the figure rather than
+        // looking down on it, which keeps the horizon — and the relief the
+        // whole demo is about — across the frame instead of under it.
+        this.pitch = 0.10;
 
-        this.distance = 6.2;
-        this.distanceTarget = 6.2;
+        // Close enough that the figure has weight in frame and the snow it
+        // displaces is legible at the character's own scale.
+        this.distance = 4.6;
+        this.distanceTarget = 4.6;
 
         /** Smoothed pivot position (the thing the spring chases). */
         this.pivot = new Vector3(0, 0, 0);
         this.pivotVel = new Vector3(0, 0, 0);
 
         /** Over-the-shoulder offset, in camera space. */
-        this.shoulder = 0.85;
-        this.pivotHeight = 1.62;
+        this.shoulder = 0.75;
+        /** Aim point on the figure: chest rather than crown, so the arm rides low. */
+        this.pivotHeight = 1.45;
 
         this.baseFov = 1.02;
         this.fov = 1.02;
@@ -153,13 +159,20 @@ export class CameraRig {
         const shake = this.trauma * this.trauma;
 
         // ------------------------------------------------------ compose xform
-        const cp = Math.cos(this.pitch);
+        // Head-look offsets are applied here, at composition: this.yaw/pitch
+        // stay mouse-owned, and the republished basis includes the offset so
+        // spells aim where the user is actually looking. The movement basis
+        // (getFlatForward/Right) reads the same composed yaw, so walking
+        // follows the look.
+        const yawV = this.yaw + input.headYawOffset;
+        const pitchV = Scalar.Clamp(this.pitch + input.headPitchOffset, PITCH_MIN, PITCH_MAX);
+        const cp = Math.cos(pitchV);
         _fwd.set(
-            Math.sin(this.yaw) * cp,
-            -Math.sin(this.pitch),
-            Math.cos(this.yaw) * cp
+            Math.sin(yawV) * cp,
+            -Math.sin(pitchV),
+            Math.cos(yawV) * cp
         );
-        _right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+        _right.set(Math.cos(yawV), 0, -Math.sin(yawV));
         Vector3.CrossToRef(_right, _fwd, _up);
         _up.normalize();
 
@@ -210,20 +223,31 @@ export class CameraRig {
         cam.position.copyFrom(_desired);
         cam.fov = this.fov;
         cam.rotation.set(
-            this.pitch + (shake > 0.0001 ? (noise1(this.shakeTime * 31 + 11) * 2 - 1) * shake * 0.02 : 0),
-            this.yaw + (shake > 0.0001 ? (noise1(this.shakeTime * 29 + 53) * 2 - 1) * shake * 0.02 : 0),
+            pitchV + (shake > 0.0001 ? (noise1(this.shakeTime * 31 + 11) * 2 - 1) * shake * 0.02 : 0),
+            yawV + (shake > 0.0001 ? (noise1(this.shakeTime * 29 + 53) * 2 - 1) * shake * 0.02 : 0),
             this.roll + (shake > 0.0001 ? (noise1(this.shakeTime * 23 + 97) * 2 - 1) * shake * 0.05 : 0)
         );
     }
 
-    /** Flat camera-space forward on the XZ plane, for movement. Writes to `out`. */
+    /**
+     * Flat camera-space forward on the XZ plane, for movement. Writes to `out`.
+     *
+     * Includes the head-look yaw offset, so the walk basis is the one the user
+     * is actually looking down: glance left and W walks left. The offset is
+     * absolute and self-centering, so facing the screen again puts W back where
+     * it was — there is nothing to unwind and no way to end up walking off at an
+     * angle you did not choose.
+     */
     getFlatForward(out) {
-        out.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+        const yawV = this.yaw + input.headYawOffset;
+        out.set(Math.sin(yawV), 0, Math.cos(yawV));
         return out;
     }
 
+    /** The matching right, off the same composed yaw. */
     getFlatRight(out) {
-        out.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+        const yawV = this.yaw + input.headYawOffset;
+        out.set(Math.cos(yawV), 0, -Math.sin(yawV));
         return out;
     }
 }

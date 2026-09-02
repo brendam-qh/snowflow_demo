@@ -54,6 +54,18 @@ import wakeDepthVert from "./wakeDepth.vertex.wgsl?raw";
 import wakeDepthFrag from "./wakeDepth.fragment.wgsl?raw";
 import waterVert from "./water.vertex.wgsl?raw";
 import waterFrag from "./water.fragment.wgsl?raw";
+import riverVert from "./river.vertex.wgsl?raw";
+import riverFrag from "./river.fragment.wgsl?raw";
+import sphScatterCompute from "./sphScatter.compute.wgsl?raw";
+import sphIntegrateCompute from "./sphIntegrate.compute.wgsl?raw";
+import gridSolveFrag from "./gridSolve.fragment.wgsl?raw";
+import particleVert from "./particle.vertex.wgsl?raw";
+import particleFrag from "./particle.fragment.wgsl?raw";
+import particleDepthVert from "./particleDepth.vertex.wgsl?raw";
+import particleDepthFrag from "./particleDepth.fragment.wgsl?raw";
+import ssfrBlurFrag from "./ssfrBlur.fragment.wgsl?raw";
+import ssfrSurfaceFrag from "./ssfrSurface.fragment.wgsl?raw";
+import fullscreenVert from "./fullscreen.vertex.wgsl?raw";
 import crystalVert from "./crystal.vertex.wgsl?raw";
 import crystalFrag from "./crystal.fragment.wgsl?raw";
 import crystalDepthVert from "./crystalDepth.vertex.wgsl?raw";
@@ -116,6 +128,21 @@ const SHADERS = {
 
     waterVertexShader: waterVert,
     waterPixelShader: waterFrag,
+    riverVertexShader: riverVert,
+    riverPixelShader: riverFrag,
+
+    // First webGPU-compute shaders in the repo. Registered under the names
+    // Babylon's ComputeShader expects: `<name>ComputeShader` in ShadersStoreWGSL.
+    sphScatterComputeShader: sphScatterCompute,
+    sphIntegrateComputeShader: sphIntegrateCompute,
+    gridSolvePixelShader: gridSolveFrag,
+    particleVertexShader: particleVert,
+    particlePixelShader: particleFrag,
+    particleDepthVertexShader: particleDepthVert,
+    particleDepthPixelShader: particleDepthFrag,
+    ssfrBlurPixelShader: ssfrBlurFrag,
+    ssfrSurfacePixelShader: ssfrSurfaceFrag,
+    fullscreenVertexShader: fullscreenVert,
     crystalVertexShader: crystalVert,
     crystalPixelShader: crystalFrag,
     crystalDepthVertexShader: crystalDepthVert,
@@ -143,4 +170,6 @@ export function registerShaders() {
     for (const name in SHADERS) {
         ShaderStore.ShadersStoreWGSL[name] = SHADERS[name];
     }
+
+    if (typeof window !== "undefined") window.ShaderStore = ShaderStore;
 }

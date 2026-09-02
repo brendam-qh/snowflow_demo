@@ -89,11 +89,17 @@ export class Heightfield {
     /** Run both bakes and mirror the height to the CPU. */
     async bake() {
         const windAngle = (S.windDirection * Math.PI) / 180;
+        const riverFlowAngle = (S.riverFlowDir * Math.PI) / 180;
+        const riverness = S.showRiver ? S.riverness : 0;
 
         this.heightTex.setVector2("worldOrigin", this.origin);
         this.heightTex.setFloat("worldSize", this.size);
         this.heightTex.setFloat("windAngle", windAngle);
         this.heightTex.setFloat("heightAmp", S.macroHeightScale);
+        this.heightTex.setFloat("riverFlowAngle", riverFlowAngle);
+        this.heightTex.setFloat("riverness", riverness);
+        this.heightTex.setFloat("riverWidth", S.riverWidth);
+        this.heightTex.setFloat("riverDepth", S.riverDepth);
         await bakeOnce(this.heightTex, "heightBake");
 
         // The aux bake differentiates the height bake, so it has to run after.

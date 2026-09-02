@@ -78,6 +78,8 @@
     .wordmark {
         font-size: clamp(28px, 4.4vw, 54px);
         font-weight: 200;
+        /* Tracking is tuned so the wordmark spans exactly the bar beneath it.
+           0.62em does that for the 8-character SNOWFLOW. */
         letter-spacing: 0.62em;
         text-indent: 0.62em; /* optical re-centre against the trailing track */
         color: var(--frost);
@@ -170,10 +172,28 @@
     }
 
     #hint.show { opacity: 1; }
+
+    /* ------------------------------------------- webcam tracking preview */
+    #trackpip {
+        position: fixed;
+        right: 14px;
+        bottom: 14px;
+        z-index: 60;
+        width: 240px;
+        height: 200px;
+        border-radius: 4px;
+        border: 1px solid rgba(143, 196, 232, 0.18);
+        background: rgba(8, 12, 19, 0.72);
+        display: none;
+        cursor: pointer; /* click = recenter head-look */
+    }
+    #trackpip.show { display: block; }
 </style>
 </head>
 <body>
     <canvas id="view" tabindex="0"></canvas>
+
+    <canvas id="trackpip" width="240" height="200"></canvas>
 
     <div id="hint">click to look &nbsp;·&nbsp; wasd to move &nbsp;·&nbsp; f1 for settings</div>
 

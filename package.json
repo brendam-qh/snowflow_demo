@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test tests/unit/*.test.js",
+    "test:e2e": "playwright test"
   },
   "keywords": [
     "webgpu",
@@ -20,9 +22,12 @@
   "license": "MIT",
   "dependencies": {
     "@babylonjs/core": "^9.18.0",
-    "@babylonjs/materials": "^9.18.0"
+    "@babylonjs/materials": "^9.18.0",
+    "@mediapipe/tasks-vision": "1.0.0-rc.20260727"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "playwright": "^1.62.1",
     "vite": "^8.1.5"
   }
 }

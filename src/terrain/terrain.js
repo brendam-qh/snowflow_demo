@@ -97,6 +97,7 @@ export class Terrain {
                     "baseSpacing", "gridHalfN",
                     "worldOrigin", "worldSize", "heightRes",
                     "windAngle", "macroAmp", "sastrugiAmp",
+                    "riverFlowAngle", "riverness", "riverWidth", "riverDepth",
                     "sunDir", "sunRadiance",
                     "shR",
                     "cascadeMatrices", "cascadeSplits", "cascadeParams",
@@ -287,6 +288,10 @@ export class Terrain {
         m.setFloat("windAngle", windAngle);
         m.setFloat("macroAmp", S.macroHeightScale);
         m.setFloat("sastrugiAmp", S.sastrugiStrength);
+        m.setFloat("riverFlowAngle", (S.riverFlowDir * Math.PI) / 180);
+        m.setFloat("riverness", S.showRiver ? S.riverness : 0);
+        m.setFloat("riverWidth", S.riverWidth);
+        m.setFloat("riverDepth", S.riverDepth);
 
         m.setVector3("sunDir", this.sky.sunDir);
         m.setColor3("sunRadiance", this.sky.sunRadiance);

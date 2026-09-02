@@ -21,6 +21,7 @@
  */
 
 import { setFrameFromDir, invertRigid, mul, xformPoint } from "../core/mat4.js";
+import { input } from "../core/input.js";
 
 // --------------------------------------------------------------- bone indices
 export const B_ROOT = 0;
@@ -319,8 +320,12 @@ export class Figure {
         // ------------------------------------------------------------- head
         // Head stabilisation: the head stays much closer to level than the chest
         // it sits on. Real necks do this and it is very obvious when missing.
-        this.headPitch = damp(this.headPitch, -chestPitch * 0.62 + surf * 0.10, 9, h);
-        this.headYaw = damp(this.headYaw, ch.lean * -0.22, 6, h);
+        // Gaze: the avatar looks where the user looks. Clamped well inside the
+        // camera's range — a neck can't turn as far as the view can pan.
+        const gazeYaw = clamp(input.headYawOffset, -0.9, 0.9);
+        const gazePitch = clamp(input.headPitchOffset, -0.5, 0.5);
+        this.headPitch = damp(this.headPitch, -chestPitch * 0.62 + surf * 0.10 + gazePitch, 9, h);
+        this.headYaw = damp(this.headYaw, ch.lean * -0.22 + gazeYaw, 6, h);
         composeBasis(ch.facing + chestTwist + this.headYaw, chestPitch + this.headPitch, this.roll * 0.5);
         const headX = neckX + cUx * 0.09, headY = neckY + cUy * 0.09, headZ = neckZ + cUz * 0.09;
         this._setBone(B_HEAD, headX, headY, headZ, _axes[3], _axes[4], _axes[5], _axes[6], _axes[7], _axes[8]);

@@ -19,12 +19,29 @@ export const input = {
     zoomDelta: 0,
 
     surf: false, // RMB held
+    /**
+     * Steering bias contributed by the right-hand Thumb_Up gesture. The
+     * gesture layer adds this to whatever movement authority currently has
+     * `moveX` (the keyboard, or the Open_Palm palm-roll). Surf still rides on
+     * `surf`; this is just the "which way does the carve bend" knob.
+     */
+    thumbSteer: 0,
     sprint: false, // shift
 
     /** @type {number} 0 = none, else 1..5 — set on keydown, cleared each frame */
     spellPressed: 0,
     /** @type {boolean} spell 2 (Ribbon) is a held cast */
     spellHeld2: false,
+
+    /**
+     * Absolute head-look offsets in radians, written every frame by
+     * tracking/headLook.js and consumed by the camera rig (and the avatar's
+     * gaze). Additive with mouse look; 0 when face tracking is off or lost.
+     * Deliberately NOT cleared by endFrame() — these are absolute state, not
+     * per-frame accumulators like lookX/lookY.
+     */
+    headYawOffset: 0,
+    headPitchOffset: 0,
 
     locked: false,
 };

@@ -49,6 +49,19 @@ const LIFE = 2.4;
  * the terrain already has does not read as thrown mass, it reads as a dune.
  */
 const PEAK = 2.15;
+/**
+ * How far the crest may sink below the ground it was cast from, metres.
+ *
+ * The base tracks the ground so the wall meets the trench floor it is cutting,
+ * but tracking it *all* the way down drops the whole crescent out of sight the
+ * moment the ground falls away: cast from the bank across the river and the
+ * wave runs along the bed a metre under the water, and all the player sees is
+ * the spray. Thrown mass does not drape over the terrain like a cloth — it
+ * holds its height and lands. So the base falls with the ground this far and
+ * then holds, which is enough to carry the crescent out over the waterline it
+ * was cast at while leaving anything gentler exactly as it was.
+ */
+const MAX_DROP = 1.0;
 
 export class Sweep {
     /** @param {import("./spellSystem.js").SpellContext} ctx */
@@ -62,6 +75,8 @@ export class Sweep {
         this.oz = 0;
         this.dx = 0;
         this.dz = 1;
+        /** Ground height at the cast, the datum MAX_DROP is measured from. */
+        this.oy = 0;
         /** Metres the crest has travelled from the origin. */
         this.reach = 0;
         this._brushOwed = 0;
@@ -84,6 +99,7 @@ export class Sweep {
         // Born a little ahead of the feet, so the player is never inside it.
         this.ox = ch.position.x + this.dx * 1.1;
         this.oz = ch.position.z + this.dz * 1.1;
+        this.oy = ch.position.y;
         this.t = 0;
         this.reach = 1.4;
         this._brushOwed = 0;
@@ -150,8 +166,9 @@ export class Sweep {
             const x = kx + rx * CURVE;
             const z = kz + rz * CURVE;
             // Sunk, so the base of the wall meets the trench floor it is cutting
-            // rather than floating on the undisturbed surface.
-            const y = terrain.heightAt(x, z) - 0.13;
+            // rather than floating on the undisturbed surface — but never more
+            // than MAX_DROP under the ground it was thrown from.
+            const y = Math.max(terrain.heightAt(x, z) - 0.13, this.oy - MAX_DROP);
 
             // Horns taper to nothing. The bell is on `u` rather than on the
             // angle so the two ends close symmetrically however wide the arc has
@@ -292,7 +309,8 @@ export class Sweep {
             const d = CURVE + (Math.random() - 0.2) * 0.6;
             const x = kx + rx * d;
             const z = kz + rz * d;
-            const y = terrain.heightAt(x, z) + amp * (0.55 + 0.6 * Math.random());
+            const base = Math.max(terrain.heightAt(x, z), this.oy - MAX_DROP);
+            const y = base + amp * (0.55 + 0.6 * Math.random());
 
             // Thrown forward and up, off the front of the crest.
             const out = 1.4 + Math.random() * 3.2;

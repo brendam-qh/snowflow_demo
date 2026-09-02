@@ -81,6 +81,47 @@ export const S = {
      */
     waterDepthTint: 1.0,
 
+    // ------------------------------------------------------------------ river
+    // The river channel is carved at bake time, so most river-shape knobs need
+    // a reload to take effect — same contract as `macroHeightScale` and the
+    // dune parameters. `riverFlowSpeed` is runtime-live (it drives the MVP
+    // surface, below).
+    /** Master toggle for the valley carvable. 0 = pure dune field. */
+    showRiver: true,
+    /** Master scale on the whole channel cut (depth + width follow). Needs re-bake. */
+    riverness: 1.0,
+    /** Compass bearing the river flows toward, in degrees. Needs re-bake. */
+    riverFlowDir: 92.0,
+    /** Multiplier on channel width (valley + bed). Needs re-bake. */
+    riverWidth: 0.35,
+    /**
+     * Water depth at the channel centre, as a multiple of 1.1 m. Scales the bed
+     * trough only — the valley floor is pinned to the waterline — so 1.0 is
+     * waist-deep on a 1.8 m character and the river stays wadeable. Above ~1.6
+     * the centre is over head height. Needs re-bake.
+     */
+    riverDepth: 1.0,
+    /** Runtime: speed of the MVP river surface flow (m/s, visual). */
+    riverFlowSpeed: 2.6,
+    /** Show the MVP kinematic river surface and (later) the SPH particles. */
+    showRiverSurface: true,
+
+    /**
+     * Fluid simulation mode (M3).
+     *   "off"        MVP kinematic surface only — no particle solve.
+     *   "particles"  StorageBuffer + @compute particles running, grid solve on.
+     *   "full"       particles + rendering replaces the kinematic surface.
+     * Defaults to "off" so the solver is opt-in until M3 is verified.
+     */
+    fluidMode: "full",
+    /** Marker particle count. Powers-of-two are friendly to workgroups; 16384
+     *  is a starting point, the slider lets you push it for visual density and
+     *  pull it for perf. */
+    fluidParticleCount: 16384,
+    /** Grid solve resolution (cells across). Higher = stiffer incompressibility,
+     *  costs more fragment texels. 128 cells over the bed AABB is a start. */
+    fluidGridRes: 128,
+
     // ------------------------------------------------------------------ post
     taa: true,
     ssr: true,
@@ -109,6 +150,18 @@ export const S = {
 
     // ----------------------------------------------------------------- debug
     debugView: "beauty", // beauty | deform | normals | depth | cascades | footprint | fineNormals
+
+    // -------------------------------------------------------------- tracking
+    /** Master switch for webcam head-look + gesture input. */
+    trackingEnabled: true,
+    /** Head-rotation -> view-rotation multiplier. */
+    trackingHeadGain: 2.2,
+    /** Palm-roll -> steering multiplier. */
+    trackingSteerGain: 1.0,
+    /** Minimum MediaPipe gesture confidence. */
+    trackingGestureScore: 0.6,
+    /** Match the mirrored camera preview: leaning right on screen steers right. */
+    trackingMirror: true,
 };
 
 /**
@@ -181,6 +234,21 @@ export const SCHEMA = [
         ],
     },
     {
+        group: "River",
+        items: [
+            { k: "showRiver", l: "River", t: "b" },
+            { k: "riverness", l: "Channel cut", t: "f", min: 0, max: 1.5, step: 0.01 },
+            { k: "riverFlowDir", l: "Flow dir°", t: "f", min: 0, max: 360, step: 1 },
+            { k: "riverWidth", l: "Width", t: "f", min: 0.15, max: 2.5, step: 0.01 },
+            { k: "riverDepth", l: "Depth", t: "f", min: 0.3, max: 2.0, step: 0.01 },
+            { k: "showRiverSurface", l: "Surface", t: "b" },
+            { k: "fluidMode", l: "Solver", t: "e", opts: ["off", "particles", "full"] },
+            { k: "fluidParticleCount", l: "Particles", t: "f", min: 1024, max: 65536, step: 1024 },
+            { k: "fluidGridRes", l: "Grid cells", t: "f", min: 32, max: 256, step: 8 },
+            { k: "riverFlowSpeed", l: "Flow speed", t: "f", min: 0, max: 8, step: 0.05 },
+        ],
+    },
+    {
         group: "Post",
         items: [
             { k: "taa", l: "TAA", t: "b" },
@@ -210,6 +278,16 @@ export const SCHEMA = [
                 opts: ["beauty", "deform", "normals", "depth", "cascades", "footprint",
                        "fineNormals", "shadow", "ndotl", "shadowMap", "albedo"],
             },
+        ],
+    },
+    {
+        group: "Tracking",
+        items: [
+            { k: "trackingEnabled", l: "Webcam control", t: "b" },
+            { k: "trackingHeadGain", l: "Head gain", t: "f", min: 0.5, max: 4, step: 0.05 },
+            { k: "trackingSteerGain", l: "Steer gain", t: "f", min: 0.25, max: 2.5, step: 0.05 },
+            { k: "trackingGestureScore", l: "Gesture conf.", t: "f", min: 0.3, max: 0.9, step: 0.05 },
+            { k: "trackingMirror", l: "Mirror steering", t: "b" },
         ],
     },
 ];

@@ -73,6 +73,95 @@ fn terrainMacroD(p: vec2f, w: f32, amp: f32) -> vec2f {
     return vec2f(hx, hz) / (2.0 * e);
 }
 
+// --------------------------------------------------------------------- river
+
+/// The river channel — a meandering carved valley plus a narrow flat-bed trench,
+/// subtracted from the macro heightfield at bake time.
+///
+/// `flowAngle` (radians) sets the river's prevailing bearing; two noise octaves
+/// offset its centreline perpendicular to that bearing so it meanders on the
+/// same scale as the dune field and the two read as one landform. Two scales
+/// shape the cut:
+///
+///   valleyW/valleyD  a wide smooth U-bowl a hundred metres across, what you
+///                    actually walk down into;
+///   bedW/bedD        a narrower inner flat-floor trench where the water sits,
+///                    so the channel floor is genuinely flat and the river
+///                    is a river and not a ditch.
+///
+/// `cutAmt` is 0..1 — 0 returns zero and the river vanishes. `widthK`/`depthK`
+/// scale both widths/depths together so the river widens and shallows as one.
+///
+/// Returns vec3f:
+///   x  TARGET BED ELEVATION in metres, absolute — the height the channel wants
+///      the ground to be, measured against the water plane. Callers blend the
+///      macro heightfield toward it weighted by `z`; they do not add it.
+///   y  BED MASK (0..1) — the narrow inner trench where the river actually
+///      sits; the snow material tints this wet and the MVP water surface
+///      renders across it. Not the wider valley, which is just shadowed
+///      banks.
+///   z  CHANNEL MASK (0..1) — valley + bed combined, for ambient darkening,
+///      sastrugi suppression and SSS gating. Wider than `y`, which is why
+///      the two are returned separately: the wet-stone tint wants the
+///      narrow strip, every other adjustment wants the whole cut.
+fn riverChannel(p: vec2f, flowAngle: f32, cutAmt: f32, widthK: f32, depthK: f32) -> vec3f {
+    if (cutAmt <= 0.001) { return vec3f(0.0, 0.0, 0.0); }
+
+    // The world height of the water plane. Must stay in step with `WATER_Y` in
+    // fluid/riverSurface.js — the channel is shaped around it, so if the two
+    // drift the river either drains to dry bed or floods its banks.
+    let waterLevel = -15.0;
+
+    let flowDir = vec2f(cos(flowAngle), sin(flowAngle));
+    let perp = vec2f(-flowDir.y, flowDir.x);
+    let along = dot(p, flowDir);
+    let across = dot(p, perp);
+
+    // Two-octave meander. Each term is `(noise - 0.5)` so that the channel
+    // centreline is centred on across = 0 — which puts the river on the player
+    // spawn at along = 0 and lets the walking-around view always face it.
+    let meander = (noise2(vec2f(along * 0.0028, 11.3)) - 0.5) * 78.0
+                + (noise2(vec2f(along * 0.0011, 41.7)) - 0.5) * 145.0;
+    let d = across - meander;
+
+    let valleyW = 95.0 * widthK;
+    let bedW = 22.0 * widthK;
+    // Water depth at the channel centre, in metres. The character is ~1.8 m tall
+    // (HIP_HEIGHT 0.95, head at 1.655), so 1.1 m is waist-deep at the deepest
+    // point and shelves to nothing at the banks: wadeable end to end.
+    let bedD = 1.1 * depthK;
+    // How far the valley rim climbs above the water. Only shapes the basin the
+    // river sits in; the dune field still dominates out here.
+    let bankRise = 7.0;
+
+    let valleyMask = exp(-(d * d) / (2.0 * valleyW * valleyW));
+    let bedMask = 1.0 - smoothstep(bedW, bedW * 1.7, abs(d));
+
+    // `x` is an ABSOLUTE target elevation, not a delta to add to the dunes.
+    //
+    // It has to be, because the water is a plane at a fixed world height: if the
+    // channel only subtracted from the dune field, the bed would inherit every
+    // metre of dune relief and the water depth would swing from dry to metres
+    // deep along the river's length. Subtracting enough to guarantee water
+    // everywhere is what made it a chasm. Pinning the bed relative to the water
+    // plane instead makes `bedD` mean exactly what it says.
+    //
+    // Centre of the bed sits bedD under the water; the bed edge comes up through
+    // the waterline; the valley rim climbs to bankRise above it. The caller
+    // blends toward this by `z` rather than replacing outright, so the bed keeps
+    // some of the dune relief underneath — see heightBake.
+    // `bedTarget`, not `target` — the latter is a WGSL reserved keyword and the
+    // shader fails to parse. Same trap as `enable` / `cross` in DECISIONS.md.
+    let bedTarget = waterLevel + bankRise * (1.0 - valleyMask) - bedD * bedMask;
+    let bedOut = bedMask * cutAmt;
+    // Full valleyMask, not 0.55 of it. As a blend weight this has to reach the
+    // bed edge at nearly 1 and ease off over the valley's whole width, or the
+    // ground steps from pinned bed to unshaped dune in the few metres the bed
+    // mask takes to fall — a wall at the water's edge you cannot walk down.
+    let chanOut = max(valleyMask, bedMask) * cutAmt;
+    return vec3f(bedTarget, bedOut, chanOut);
+}
+
 // -------------------------------------------------------------------- rocks
 
 /// Sparse exposed rock. Jittered grid, one outcrop per cell, most of them

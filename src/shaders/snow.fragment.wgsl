@@ -63,6 +63,16 @@ uniform shadowBias: f32;
 
 uniform windAngle: f32;
 uniform sastrugiAmp: f32;
+
+// River — re-evaluated analytically here so the snow material can tint the
+// banks and bed without a second bake. `riverChannel` lives in snowTerrain
+// (already included above) and uses `snowNoise` (also included), so the mask
+// the bake cuts the valley with and the mask the material shades to are the
+// same function and cannot disagree.
+uniform riverFlowAngle: f32;
+uniform riverness: f32;
+uniform riverWidth: f32;
+uniform riverDepth: f32;
 uniform detailStrength: f32;
 uniform glintIntensity: f32;
 uniform glintGrazing: f32;
@@ -277,6 +287,22 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     // remove.
     let geoN = N;
 
+    // --- river channel mask, computed once the geometric normal exists -------
+    // Two masks out of `riverChannel`: `y` is the narrow BED mask, where the
+    // river actually sits (this is what tints wet). `z` is the wider CHANNEL
+    // mask, used only to dim the snow reliefs inside the cut so the bed
+    // doesn't end up covered by carved sastrugi.
+    let _river = riverChannel(world.xz, uniforms.riverFlowAngle, uniforms.riverness,
+                               uniforms.riverWidth, uniforms.riverDepth);
+    let bedMask = _river.y;
+    let channelMask = _river.z;
+
+    // The riverbed is wet stone: no sastrugi, no ripples. Re-taper the fine
+    // layer's slope contribution toward zero inside the channel (bed feeds in
+    // hardest because the snow goes *fully* away there).
+    grad -= fine.yz * channelMask * 0.92;
+    N = normalFromGradient(grad);
+
     // ---------------------------------------------------------- detail normals
     // Three tiling scales, each faded by footprint so the finest only exists
     // when it is actually resolvable, and cross-faded so no scale ever pops in.
@@ -342,6 +368,28 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
         albedo = mix(albedo, rockCol, rockExposed);
         roughness = mix(roughness, 0.85, rockExposed);
         thickness = mix(thickness, 0.0, rockExposed);
+    }
+
+    // --- riverbed: wet stone and sand in the narrow bed trench ----------------
+    // BED MASK only — the broader valley cut already shades itself; the wet
+    // tint is confined to the strip the water sits in, so you read "carved
+    // snow → bank → wet-stone riverbed", not "every flat patch is wet".
+    //
+    // Tints to wet-stone grey with a touch of warm sand in the lens of the bed
+    // (flat bed) and cooler rock up the bed walls; roughness drops on the flat
+    // parts (water films them) and rises up the steeper banks. SSS removed.
+    if (bedMask > 0.001) {
+        let sandN = noise2(world.xz * 0.45) * 0.5 + 0.5;
+        let bedN = noise2(world.xz * 1.7 + 33.1) * 0.5 + 0.5;
+        let flatness = clamp(1.0 - abs(N.y), 0.0, 1.0);
+        let bedCol = mix(vec3f(0.085, 0.082, 0.082), vec3f(0.16, 0.135, 0.105), sandN);
+        let bankCol = mix(vec3f(0.055, 0.062, 0.072), vec3f(0.108, 0.112, 0.122), bedN);
+        let wetCol = mix(bankCol, bedCol, flatness * flatness);
+        let m = bedMask * smoothstep(0.32, 0.66, 1.0 - abs(N.y));
+        albedo = mix(albedo, wetCol, m);
+        roughness = mix(roughness, mix(0.74, 0.18, flatness * flatness), m);
+        f0 = mix(f0, vec3f(0.042), m * 0.85);
+        thickness = mix(thickness, 0.0, m);
     }
 
     // --- carved-snow surface state -----------------------------------------
@@ -416,9 +464,14 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     var direct = albedo * INV_PI * sunRadiance * diff * shadow;
 
     // --- subsurface --------------------------------------------------------
+    // Snow's mean free path is millimetres, so light wraps well past the
+    // geometric terminator. This is why snow shadow edges are soft even where
+    // the shadow map is pin sharp. SSS is suppressed by exposed rock and by
+    // the riverbed (wet stone scatters nothing).
+    let sssGate = 1.0 - max(rockExposed, bedMask);
     let sss = snowSubsurface(
         N, L, V, sunRadiance, thickness,
-        uniforms.sssStrength * (1.0 - rockExposed), uniforms.sssRadius
+        uniforms.sssStrength * sssGate, uniforms.sssRadius
     );
     // Only partly shadowed: scattered light arrives through the snow, so a
     // shadowed drift lip still glows. Killing this with the shadow term is what
@@ -470,7 +523,7 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     if (uniforms.spellLightCount > 0.5) {
         color += spellLighting(
             world, N, V, albedo, thickness,
-            uniforms.sssStrength * (1.0 - rockExposed), uniforms.sssRadius,
+            uniforms.sssStrength * sssGate, uniforms.sssRadius,
             uniforms.spellLightPos, uniforms.spellLightCol, uniforms.spellLightCount
         );
     }
@@ -478,13 +531,15 @@ fn main(input: FragmentInputs) -> FragmentOutputs {
     // --- glints ------------------------------------------------------------
     // Last, and added as radiance rather than modulated into the BRDF, because
     // a glint is a specular highlight from a crystal facet that the shading
-    // normal does not represent.
-    if (uniforms.glintIntensity > 0.001 && rockExposed < 0.5) {
+    // normal does not represent. Gated off where snow has been replaced by
+    // rock or wet riverbed.
+    let glintGate = (1.0 - rockExposed) * (1.0 - bedMask);
+    if (uniforms.glintIntensity > 0.001 && glintGate > 0.05) {
         let g = snowGlints(
             world.xz, N, V, L, footprint,
             uniforms.glintIntensity, uniforms.glintGrazing
         );
-        color += sunRadiance * g * shadow * (1.0 - iceAmount * 0.6) * 0.55;
+        color += sunRadiance * g * shadow * (1.0 - iceAmount * 0.6) * 0.55 * glintGate;
     }
 
     // ---- occlusion, applied last and to everything -------------------------

@@ -1,10 +1,11 @@
 # SNOWFLOW
 
-A real-time snow rendering tech demo. WebGPU, Babylon.js, hand-written WGSL.
-Everything you see is generated on the GPU at load time — there are no textures,
-no meshes, no HDRIs and no animation data in this repository.
+A real-time tech demo: a compute-driven river cut through a procedural snow
+valley. WebGPU, Babylon.js, hand-written WGSL. Everything you see is generated
+on the GPU at load time — there are no textures, no meshes, no HDRIs and no
+animation data in this repository.
 
-**▶ [snowflow-lilac.vercel.app](https://snowflow-lilac.vercel.app/)**
+**▶ [riverwalk.qualityhealth.app](https://riverwalk.qualityhealth.app/)**
 
 > Requires a WebGPU-capable desktop browser (Chrome/Edge 113+, Firefox 141+,
 > Safari 26+) and a discrete or recent integrated GPU. There is no WebGL
@@ -23,6 +24,27 @@ no meshes, no HDRIs and no animation data in this repository.
 | **Right mouse (hold)** | snow-surf — carve across the field and throw a wake |
 | `1` – `5` | the five spells (`2` is a held cast) |
 | `F1` or `` ` `` | settings and performance overlay |
+| **ⓘ button** (bottom-left) | controls reference for keyboard, mouse, and gestures |
+| **Webcam** | head-look — turn your head to pan the view (`R` or click the preview to recenter) |
+| **Right palm** | walk · lean to steer · raise to sprint · **thumb extended** to snow-surf · **tilt thumb** to steer the carve |
+| **Left hand** | palm forward: water push · victory: water stream (hold) · thumb up: tower column · thumb down: ice spikes · closed fist (hold): vortex |
+
+---
+
+## Webcam tracking
+
+With camera permission granted, the demo tracks your face and hands (MediaPipe
+tasks-vision, models vendored in `public/models/` — nothing leaves the machine).
+Turning your head pans the camera as an absolute, self-centering offset on top
+of mouse look, and the avatar's head follows your gaze. Gestures drive
+locomotion and spells; keyboard and mouse keep working throughout, and the
+gesture layer only owns movement while a hand is actually tracked (hands out of
+frame for ~250 ms and the character stops). Turn it off with "Webcam control"
+in the F1 panel, or deny camera permission — the demo is unchanged.
+
+`?track=mock` swaps the webcam for a scripted pose source (used by the
+Playwright smoke test, `npm run test:e2e`; unit tests for the mapping logic run
+with `npm test`).
 
 The overlay exposes every art parameter as a live slider — sun angle, wind
 bearing, subsurface radius, deformation depth, tonemap curve, exposure — plus a
@@ -236,11 +258,16 @@ three 2048² shadow cascades, and the sky and detail LUTs.
 ## Running locally
 
 ```bash
-npm install
+npm install      # gated by .npmrc `before=` — see note below
 npm run dev      # vite dev server on :5173
 npm run build    # production build into dist/
 npm run preview  # serve the production build
 ```
+
+`.npmrc` pins `before=` so npm will not resolve any release published inside the
+last 7 days (the repo-wide supply-chain rule — see the root README). It is a
+fixed date, not a rolling window: bump it deliberately when you need newer
+packages, and never automatically.
 
 ## Layout
 
@@ -270,4 +297,14 @@ Runtime dependencies are `@babylonjs/core` and `@babylonjs/materials`
 (Apache-2.0). The only build dependency is Vite (MIT), which does not ship in
 the output.
 
-This project is released under the [MIT licence](LICENSE).
+## Credits
+
+This is a fork of SNOWFLOW, copyright (c) 2026 Maksymilian
+Dendura — the terrain clipmap, snow shading, character rig, spell system and
+post chain are all upstream work. This fork adds the river: a baked
+channel through the heightfield, a PIC/FLIP fluid solver on compute, and a
+screen-space fluid rendering pass for the surface. See [DECISIONS.md](DECISIONS.md)
+for what was changed and why.
+
+This project is released under the [MIT licence](LICENSE), and retains the
+upstream copyright notice.

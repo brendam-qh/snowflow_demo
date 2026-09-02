@@ -10,6 +10,11 @@ import { WebGPUEngine } from "@babylonjs/core/Engines/webgpuEngine";
 // onto the engine prototype, which is what makes the overlay's GPU row a real
 // GPU number rather than the presentation cadence.
 import "@babylonjs/core/Engines/AbstractEngine/abstractEngine.timeQuery";
+// Side-effect import: installs `createComputeContext` + the compute dispatch
+// path onto the WebGPU engine. Without this, `new ComputeShader()` throws
+// `engine.createComputeContext is not a function`. Same pattern as the
+// timeQuery import above.
+import "@babylonjs/core/Engines/WebGPU/Extensions/engine.computeShader.js";
 import { Scene } from "@babylonjs/core/scene";
 import { Vector3, Color3, Color4 } from "@babylonjs/core/Maths/math";
 
@@ -27,13 +32,22 @@ import { SprayField } from "./vfx/particles.js";
 import { SurfWake } from "./vfx/surfWake.js";
 import { SpellSystem } from "./spells/spellSystem.js";
 import { Overlay } from "./ui/overlay.js";
+import { GestureHelp } from "./ui/gestureHelp.js";
 import { Sky } from "./render/sky.js";
 import { ShadowSystem } from "./render/shadows.js";
 import { Terrain } from "./terrain/terrain.js";
 import { DepthPass } from "./render/depthPass.js";
 import { PostChain } from "./post/postChain.js";
+import { RiverSurface } from "./fluid/riverSurface.js";
+import { ParticleSolver } from "./fluid/particleSolver.js";
+import { ParticleRenderer } from "./fluid/particleRender.js";
 import { whenReady } from "./core/gpuUtil.js";
 import * as loading from "./core/loading.js";
+import { initTracking } from "./tracking/tracker.js";
+import { initMockTracking } from "./tracking/mockTracker.js";
+import { initTrackingUi } from "./tracking/trackingUi.js";
+import { applyTracking } from "./tracking/applyTracking.js";
+import { spellStats } from "./tracking/gestures.js";
 
 // ------------------------------------------------------- module-scope scratch
 const _vel = new Vector3();
@@ -96,8 +110,23 @@ async function boot() {
     // No stock lights: every material here computes its own lighting.
     scene.ambientColor = new Color3(0, 0, 0);
 
+    // Derived river-bank spawn geometry — flow direction drives the spawn foot
+    // offset and the initial camera yaw, so a settings change re-grounds
+    // correctly on reload. Only the trig is computed here; the actual bank-lip
+    // position is scanned off the baked heightfield after `terrain.build()`,
+    // because the bed meanders and a fixed perpendicular offset (the old
+    // `BANK_OFFSET = 50`) landed the character mid-slope with the channel
+    // wandering out of frame rather than the "water across the foreground,
+    // opposite bank up top" framing the design calls for.
+    const _flowAng = (S.riverFlowDir * Math.PI) / 180;
+    // Perpendicular to flow, pointing to one bank.
+    const _perpX = -Math.sin(_flowAng);
+    const _perpZ = Math.cos(_flowAng);
+
     const rig = new CameraRig(scene, canvas);
     scene.activeCamera = rig.camera;
+    // Yaw + pitch are finalised after the bed scan below; defaults stand until
+    // then and only matter once the run loop starts calling `rig.update`.
 
     // ------------------------------------------------------------------ sky
     await loading.phase("integrating atmosphere", 0.2);
@@ -122,11 +151,98 @@ async function boot() {
     onChange("showTerrain", (v) => (terrain.mesh.isVisible = v));
     depthPass.registerCaster(terrain.mesh, terrain.makePrepassMaterial());
 
+    // -------------------------------------------------------------- river
+    // MVP surface. Phase B will add the SPH solver underneath; the surface stays.
+    await loading.phase("filling the channel", 0.55);
+    const river = new RiverSurface(scene, sky);
+    onChange(["showRiver", "showRiverSurface"], () =>
+        river.setEnabled(S.showRiver && S.showRiverSurface)
+    );
+
     await loading.phase("placing character", 0.62);
 
+    // Spawn on the river's bank so the first frame puts the carve framing the
+    // channel: water across the foreground, the opposite bank up top. The bed
+    // meanders, so the character is not placed at a fixed perpendicular offset
+    // — instead the baked heightfield is scanned along the perpendicular
+    // through `along = 0` to find the deepest point (the bed centre), and the
+    // spawn is dropped on the bank lip on whichever side has firmer ground.
     const character = new CharacterController(terrain);
-    character.position.set(0, 0, 0);
-    character.position.y = terrain.heightAt(0, 0);
+    let spawnX = 0, spawnZ = 0, yaw = Math.atan2(-_perpX, -_perpZ);
+    // Bed centre at along = 0, used for both spawn framing and the SPH grid AABB.
+    let bedCenterX = 0, bedCenterZ = 0;
+    if (S.showRiver) {
+        // Scan across the channel at along = 0 (world point = across * perp)
+        // to find the deepest point — the bed centre.
+        let bedAcross = 0, bedDepth = Infinity;
+        for (let across = -150; across <= 150; across += 2) {
+            const wx = across * _perpX;
+            const wz = across * _perpZ;
+            const h = terrain.heightAt(wx, wz);
+            if (h < bedDepth) { bedDepth = h; bedAcross = across; }
+        }
+        bedCenterX = bedAcross * _perpX;
+        bedCenterZ = bedAcross * _perpZ;
+        // Walk outward from the bed centre on each side until the ground rises
+        // above the water surface (`waterY`). That crossing is the shoreline;
+        // standing a few metres past it puts the character on the bank looking
+        // down at the water rather than wading in it.
+        const WATER_Y = -15;
+        const shore = (sign) => {
+            for (let r = 4; r <= 160; r += 2) {
+                const across = bedAcross + sign * r;
+                const h = terrain.heightAt(across * _perpX, across * _perpZ);
+                if (h > WATER_Y) return { across, h };
+            }
+            return { across: bedAcross + sign * 60, h: -999 };
+        };
+        const sp = shore(+1), sm = shore(-1);
+        // Pick the higher shoreline — the meander can beach one side and leave
+        // a proper bank on the other.
+        const shorePick = sp.h >= sm.h ? sp : sm;
+        const charAcross = shorePick.across + (shorePick.across > bedAcross ? 3 : -3);
+        spawnX = charAcross * _perpX;
+        spawnZ = charAcross * _perpZ;
+        // Look from the bank toward the bed centre (flat on XZ).
+        const dirX = bedAcross * _perpX - spawnX;
+        const dirZ = bedAcross * _perpZ - spawnZ;
+        yaw = Math.atan2(dirX, dirZ);
+    }
+    character.position.set(spawnX, 0, spawnZ);
+    character.position.y = terrain.heightAt(character.position.x, character.position.z);
+    rig.yaw = yaw;
+    // The figure faces where the camera looks, so the first frame is the
+    // over-the-shoulder framing the rig holds for the rest of the session —
+    // not a stranger standing side-on to the lens.
+    character.facing = yaw;
+    // Barely pitched: the water lies across the lower frame and the opposite
+    // bank across the upper without the rig climbing over the figure's head.
+    rig.pitch = 0.10;
+
+    // ------------------------------------------------------------- fluid (M3)
+    // The PIC/FLIP hybrid solver. Grid AABB centered on the bed centre, sized
+    // to cover the channel window — ±200m along flow, ±100m across. The grid
+    // solve uses the `riverChannel` analytic to identify the bed within this
+    // box, so cells outside the channel are simply empty. Gated by
+    // `S.fluidMode` — "off" = kinematic MVP surface only.
+    let solver = null;
+    let particleRender = null;
+    if (S.fluidMode !== "off" && S.showRiver) {
+        await loading.phase("building fluid solver", 0.7);
+        const GRID_EXTENT = 200;
+        solver = new ParticleSolver(scene, terrain, {
+            origin: [bedCenterX - GRID_EXTENT, bedCenterZ - GRID_EXTENT],
+            size: [GRID_EXTENT * 2, GRID_EXTENT * 2],
+        });
+        particleRender = new ParticleRenderer(scene, solver, depthPass, sky);
+        // Through `setEnabled`, not `mesh.isVisible`: the particle mesh is the
+        // depth data pass and must never be on screen, and poking visibility
+        // here left the boot state disagreeing with what the toggle does.
+        particleRender.setEnabled(S.fluidMode === "full");
+        onChange("fluidMode", () => {
+            particleRender.setEnabled(S.fluidMode === "full");
+        });
+    }
 
     // The figure: skeleton, garment simulation, shell fur.
     const figure = new Character(scene, terrain, sky, shadows, character);
@@ -164,6 +280,17 @@ async function boot() {
 
     const overlay = new Overlay({ rig, character });
     initInput(canvas, { onToggleOverlay: () => overlay.toggle() });
+    const help = new GestureHelp();
+
+    // Webcam tracking (head-look + gestures). Non-blocking by design: model
+    // fetch and the camera permission prompt run concurrently with the
+    // warm-up below, and tracking switches itself on whenever it is ready.
+    // `?track=mock` swaps in a scripted source for headless testing.
+    const tracking =
+        new URLSearchParams(location.search).get("track") === "mock"
+            ? initMockTracking()
+            : initTracking();
+    initTrackingUi(tracking);
 
     // ------------------------------------------------------------- warm-up
     // Everything that can compile, compiles here — behind the loading screen.
@@ -188,6 +315,9 @@ async function boot() {
     for (let i = 0; i < passes.length; i++) {
         await whenReady(passes[i], "post:" + passes[i].name);
     }
+    await river.warmUp();
+    if (solver) await solver.warmUp();
+    if (particleRender) await particleRender.warmUp();
 
     await loading.phase("warming render targets", 0.92);
     // A few real frames so every render target is allocated and every pipeline
@@ -213,6 +343,12 @@ async function boot() {
         time += dt;
 
         pollInput();
+
+        // Tracking writes into the same input struct the keyboard just did —
+        // after pollInput so gestures win while a hand is tracked, and before
+        // the character and camera read the struct below.
+        const tTrack = performance.now();
+        applyTracking(tracking.state, input, dt);
 
         // Per-system CPU timing. Babylon's WebGPU timestamp queries are
         // whole-frame, so the GPU row is a total and these are not subdivisions
@@ -246,6 +382,11 @@ async function boot() {
         const tSpells = performance.now();
         terrain.update(rig.camera.position, character.position, dt);
         const tTerrain = performance.now();
+        if (river) river.update(dt, rig.camera.position, time);
+        if (solver && S.fluidMode !== "off") {
+            solver.update(dt, character.position);
+            if (particleRender) particleRender.update(rig.camera.position, rig.right, rig.up);
+        }
         // After the shadow refit, so the figure's uniforms carry this frame's
         // cascade matrices rather than last frame's.
         figure.sync(rig.camera.position);
@@ -259,6 +400,7 @@ async function boot() {
         post.endFrame();
         const tRender = performance.now();
 
+        mark("cpu tracking", tFrame - tTrack);
         mark("cpu character", tChar - tFrame);
         mark("cpu spells", tSpells - tChar);
         mark("cpu terrain", tTerrain - tSpells);
@@ -287,8 +429,9 @@ async function boot() {
 
     globalThis.SNOWFLOW = {
         engine, scene, rig, character, figure, contact, spray, wake, spells,
-        overlay, terrain, sky, shadows, post, depthPass,
-        S, input, perfStats: stats,
+        overlay, terrain, sky, shadows, post, depthPass, river, solver,
+        particleRender,
+        S, input, perfStats: stats, tracking, spellStats,
     };
 }
 
